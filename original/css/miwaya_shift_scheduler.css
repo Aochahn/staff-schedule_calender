@@ -19,6 +19,8 @@ button{font:inherit}.btn{border-radius:7px;padding:10px 13px;cursor:pointer;min-
 .data-actions{margin-top:15px;padding-top:15px;border-top:1px solid var(--line)}
 .data-actions h2{margin-bottom:10px}.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .data-status{display:none;margin-top:9px;color:#9bd29b;background:#132013;border:1px solid #304f30;border-radius:7px;padding:8px 9px;font-size:11px}
+.json-preview{margin-top:12px;background:#0d0d0d;border:1px solid #292929;border-radius:7px;padding:10px}
+.json-preview textarea{width:100%;min-height:160px;max-height:260px;resize:vertical;background:#080808;border:1px solid #303030;border-radius:6px;color:#ddd;font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:9px}
 .schedule-wrap{overflow:auto;border:1px solid var(--line);border-radius:9px}.schedule{min-width:1042px}
 .day{border-bottom:1px solid var(--line)}.day:last-child{border:0}.daytitle{height:38px;padding:11px 13px;background:#101010;font-weight:700;position:sticky;left:0;z-index:3}
 .timeline{display:grid;grid-template-columns:150px repeat(13,minmax(68px,1fr))}

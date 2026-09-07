@@ -4,12 +4,18 @@ let people=[], result=null;
 const STORAGE="miwaya_shift_people_v2";
 const DATA_SCHEMA_VERSION=1;
 const el=(id)=>document.getElementById(id);
+let latestJsonExport=null;
 
 function fmt(m){if(m===1440)return"24:00";return String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0")}
 function esc(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function newId(){return crypto.randomUUID?crypto.randomUUID():`person-${Date.now()}-${Math.random().toString(16).slice(2)}`}
 function showError(x){let e=el("error");e.textContent=x;e.style.display=x?"block":"none"}
 function showStatus(x){let e=el("data-status");e.textContent=x;e.style.display=x?"block":"none"}
+function clearJsonPreview(){
+ latestJsonExport=null;
+ el("json-preview").hidden=true;
+ el("json-preview-text").value="";
+}
 function options(){
  let f=el("from"),t=el("to");
  for(let m=1050;m<=1440;m+=30){let o=document.createElement("option");o.value=m;o.textContent=fmt(m);f.appendChild(o)}
@@ -59,27 +65,88 @@ function validImportedResult(data,personCount){
  if(data.work.length!==personCount||data.week.length!==personCount||data.daily.length!==personCount)return false;
  return data.work.every(person=>Array.isArray(person)&&person.length===7&&person.every(day=>Array.isArray(day)&&day.length===NS));
 }
-function exportJson(){
- showError("");showStatus("");
- if(!people.length)return showError("書き出すスタッフデータがありません。");
- const payload={
+function createExportPayload(){
+ return {
    app:"miwaya_shift_scheduler",
    schemaVersion:DATA_SCHEMA_VERSION,
    exportedAt:new Date().toISOString(),
    people,
    result
  };
- const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+}
+function createJsonExport(){
+ const stamp=new Date().toISOString().slice(0,10).replaceAll("-","");
+ const payload=createExportPayload();
+ return {fileName:`miwaya-shift-${stamp}.json`,text:JSON.stringify(payload,null,2)};
+}
+function downloadJson(data){
+ const blob=new Blob([data.text],{type:"application/json"});
  const url=URL.createObjectURL(blob);
  const link=document.createElement("a");
- const stamp=new Date().toISOString().slice(0,10).replaceAll("-","");
  link.href=url;
- link.download=`miwaya-shift-${stamp}.json`;
+ link.download=data.fileName;
  document.body.appendChild(link);
  link.click();
  link.remove();
  URL.revokeObjectURL(url);
- showStatus("JSONを書き出しました。");
+}
+function showJsonPreview(data){
+ latestJsonExport=data;
+ el("json-preview").hidden=false;
+ el("json-preview-text").value=data.text;
+}
+function exportJson(){
+ showError("");showStatus("");
+ if(!people.length)return showError("書き出すスタッフデータがありません。");
+ const data=createJsonExport();
+ showJsonPreview(data);
+ downloadJson(data);
+ showStatus("JSONを書き出しました。下のプレビューから共有やコピーもできます。");
+}
+async function shareJson(){
+ showError("");showStatus("");
+ if(!latestJsonExport){
+   if(!people.length)return showError("共有するスタッフデータがありません。");
+   showJsonPreview(createJsonExport());
+ }
+ const data=latestJsonExport;
+ const file=new File([data.text],data.fileName,{type:"application/json"});
+ try{
+   if(navigator.canShare&&navigator.canShare({files:[file]})){
+     await navigator.share({title:"MIWAYA シフトJSON",text:"MIWAYAのシフトデータです。",files:[file]});
+   }else if(navigator.share){
+     await navigator.share({title:"MIWAYA シフトJSON",text:data.text});
+   }else{
+     await copyJson();
+     return showStatus("このブラウザは共有に未対応です。JSONをコピーしました。LINEなどに貼り付けて共有してください。");
+   }
+   showStatus("共有画面を開きました。LINEなど送信先を選んでください。");
+ }catch(error){
+   if(error.name!=="AbortError")showError(`共有できませんでした。${error.message}`);
+ }
+}
+async function copyJson(){
+ showError("");showStatus("");
+ if(!latestJsonExport){
+   if(!people.length)return showError("コピーするスタッフデータがありません。");
+   showJsonPreview(createJsonExport());
+ }
+ try{
+   await navigator.clipboard.writeText(latestJsonExport.text);
+   showStatus("JSONをコピーしました。LINEなどに貼り付けて共有できます。");
+ }catch(error){
+   el("json-preview-text").select();
+   showStatus("コピー操作が使えないため、プレビュー欄を選択しました。手動でコピーしてください。");
+ }
+}
+function downloadLatestJson(){
+ showError("");showStatus("");
+ if(!latestJsonExport){
+   if(!people.length)return showError("ダウンロードするスタッフデータがありません。");
+   showJsonPreview(createJsonExport());
+ }
+ downloadJson(latestJsonExport);
+ showStatus("JSONを再ダウンロードしました。");
 }
 function importJsonFile(file){
  if(!file)return;
@@ -93,6 +160,7 @@ function importJsonFile(file){
      save();
      renderPeople();
      if(result)render();else resetResultView();
+     clearJsonPreview();
      showError("");
      showStatus("JSONを読み込みました。");
    }catch(error){
@@ -113,20 +181,20 @@ function addPerson(){
  if(!name)return showError("名前を入力してください。");if(!ds.length)return showError("曜日を1つ以上選択してください。");
  if(to-from<180)return showError("1勤務は最低2時間30分必要です。");
  people.push({id:newId(),name,days:ds,from,to,color:COLORS[people.length%COLORS.length],priority:false});
- save();renderPeople();el("name").value="";
+ save();renderPeople();clearJsonPreview();el("name").value="";
 }
 function renderPeople(){
  let e=el("people");
  e.innerHTML=people.length?people.map(p=>`<div class="person"><span class="dot" style="background:${p.color}"></span><div class="pinfo"><div class="pname">${esc(p.name)} ${p.priority?"｜固定優先":""}</div><div class="psub">${p.days.map(d=>DAYS[d]).join("・")} / ${fmt(p.from)}–${fmt(p.to)}</div></div>${p.priority?"":`<button class="remove" type="button" data-remove-id="${p.id}" aria-label="${esc(p.name)}を削除">×</button>`}</div>`).join(""):'<div class="empty">スタッフ未登録</div>';
 }
-function removePerson(id){people=people.filter(p=>p.id!==id);save();renderPeople()}
-function clearAll(){people=[];save();renderPeople();resetResultView()}
+function removePerson(id){people=people.filter(p=>p.id!==id);save();renderPeople();clearJsonPreview()}
+function clearAll(){people=[];save();renderPeople();resetResultView();clearJsonPreview()}
 function loadDemo(saveIt=true){
  people=[
  {id:"t",name:"高田（店長）",days:[0,1,2,3,4,5,6],from:1140,to:1440,color:"#c9a46c",priority:true,custom:{0:[1140,1440],1:[1140,1440],2:[1380,1440],3:[1380,1440],4:[1380,1440],5:[1380,1440],6:[1140,1440]}},
  {id:"s",name:"柴谷（専務）",days:[2,3,4,5],from:1140,to:1380,color:"#7ba7d9",priority:true}
  ];
- if(saveIt)save();renderPeople();generate();
+ if(saveIt)save();renderPeople();clearJsonPreview();generate();
 }
 function avail(p,d,s){
  let a=START+s*SLOT,b=a+SLOT;
@@ -134,7 +202,7 @@ function avail(p,d,s){
  return p.days.includes(d)&&a>=p.from&&b<=p.to;
 }
 function generate(){
- showError("");
+ showError("");showStatus("");clearJsonPreview();
  if(!people.length)return showError("スタッフを登録してください。");
 
  const work=people.map(()=>Array.from({length:7},()=>Array(NS).fill(false)));
@@ -345,6 +413,9 @@ function bindEvents(){
  el("export-json").addEventListener("click",exportJson);
  el("import-json").addEventListener("click",()=>el("import-json-file").click());
  el("import-json-file").addEventListener("change",(event)=>importJsonFile(event.target.files[0]));
+ el("share-json").addEventListener("click",shareJson);
+ el("copy-json").addEventListener("click",copyJson);
+ el("download-json").addEventListener("click",downloadLatestJson);
  el("people").addEventListener("click",(event)=>{
    const button=event.target.closest("[data-remove-id]");
    if(button)removePerson(button.dataset.removeId);

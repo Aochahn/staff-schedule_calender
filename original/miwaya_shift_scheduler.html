@@ -29,6 +29,11 @@
 <input id="import-json-file" class="visually-hidden" type="file" accept="application/json,.json">
 <div class="actions"><button id="export-json" class="btn secondary" type="button">JSONを書き出し</button><button id="import-json" class="btn secondary" type="button">JSONを読み込み</button></div>
 <div id="data-status" class="data-status"></div>
+<div id="json-preview" class="json-preview" hidden>
+<label for="json-preview-text">書き出し内容</label>
+<textarea id="json-preview-text" readonly></textarea>
+<div class="actions"><button id="share-json" class="btn primary" type="button">共有する</button><button id="copy-json" class="btn secondary" type="button">コピー</button><button id="download-json" class="btn secondary" type="button">再ダウンロード</button></div>
+</div>
 <div class="notice">※スタッフ登録データと編成済みシフトをJSONファイルとして保存・共有できます。</div>
 </div>
 <div class="notice">※選択できる時間は17:30〜24:00の30分単位のみ。<br>※自動編成では「高田（店長）・柴谷（専務）」の設定を固定し、その空きを優先して他スタッフを配置します。<br>※常時2名を最優先。3名は1日合計1時間まで。1勤務は最低2時間30分。週20時間超は警告。</div>
