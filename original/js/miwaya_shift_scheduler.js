@@ -272,12 +272,25 @@ function shiftRange(slots){
  if(!ids.length)return null;
  return `${fmt(START+ids[0]*SLOT)}–${fmt(START+(ids[ids.length-1]+1)*SLOT)}`;
 }
+function mobileAxis(){
+ let out="";
+ for(let s=0;s<NS;s++)out+=`<span>${fmt(START+s*SLOT)}</span>`;
+ return `<div class="mobile-axis">${out}</div>`;
+}
+function mobileWorkBar(slots,color){
+ let out="";
+ for(let s=0;s<NS;s++){
+   const open=START+s*SLOT>=1080&&START+s*SLOT<1380;
+   out+=`<span class="mobile-bar-cell ${open?"open":""} ${slots[s]?"on":""}"></span>`;
+ }
+ return `<div class="mobile-bar" style="--staff-color:${color}">${out}</div>`;
+}
 function render(){
  let {work,week,daily,violations}=result,desktop="",mobile="";
  for(let d=0;d<7;d++){
   desktop+=`<div class="day"><div class="daytitle">${DAYS[d]}曜日</div><div class="timeline head"><div class="cell">STAFF</div>`;
   for(let s=0;s<NS;s++)desktop+=`<div class="cell">${fmt(START+s*SLOT)}</div>`;desktop+="</div>";
-  mobile+=`<div class="mobile-day"><div class="mobile-day-title">${DAYS[d]}曜日</div><div class="mobile-staff">`;
+  mobile+=`<div class="mobile-day"><div class="mobile-day-title">${DAYS[d]}曜日</div><div class="mobile-day-body">${mobileAxis()}<div class="mobile-staff">`;
   let dayShifts=0;
   people.forEach((p,i)=>{
    desktop+=`<div class="timeline"><div class="namecell"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</div>`;
@@ -287,7 +300,7 @@ function render(){
    }
    desktop+="</div>";
    const range=shiftRange(work[i][d]);
-   if(range){dayShifts++;mobile+=`<div class="mobile-shift"><div class="mobile-shift-name"><span class="dot" style="background:${p.color}"></span><span>${esc(p.name)}</span></div><div class="mobile-shift-time">${range}</div></div>`;}
+   if(range){dayShifts++;mobile+=`<div class="mobile-shift"><div class="mobile-shift-head"><div class="mobile-shift-name"><span class="dot" style="background:${p.color}"></span><span>${esc(p.name)}</span></div><div class="mobile-shift-time">${range}</div></div>${mobileWorkBar(work[i][d],p.color)}</div>`;}
   });
   if(!dayShifts)mobile+=`<div class="mobile-none">勤務なし</div>`;
   mobile+=`</div><div class="mobile-cover-grid">`;
@@ -300,7 +313,7 @@ function render(){
    mobile+=`<div class="mobile-cover ${cl}"><span class="mobile-cover-time">${fmt(START+s*SLOT)}</span><b>${tx}</b></div>`;
   }
   desktop+="</div></div>";
-  mobile+="</div></div>";
+  mobile+="</div></div></div>";
  }
  el("schedule").innerHTML=`<div class="desktop-schedule">${desktop}</div><div class="mobile-schedule">${mobile}</div>`;
  el("legend").innerHTML=people.map(p=>`<div class="legend-item"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</div>`).join("");
