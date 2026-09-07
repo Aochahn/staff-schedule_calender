@@ -1,5 +1,6 @@
 const DAYS=["月","火","水","木","金","土","日"], START=17*60+30, SLOT=30, NS=13;
 const COLORS=["#c9a46c","#7ba7d9","#9bc27d","#c77b9b","#8f83c9","#d18b63","#68aaa0","#c6b96b","#a77db7","#789d72"];
+const ROLES={hall:"ホール",kitchen:"キッチン"};
 let people=[], result=null;
 const STORAGE="miwaya_shift_people_v2";
 const DATA_SCHEMA_VERSION=1;
@@ -11,6 +12,19 @@ let staffMaster=[];
 function fmt(m){if(m===1440)return"24:00";return String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0")}
 function esc(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function newId(){return crypto.randomUUID?crypto.randomUUID():`person-${Date.now()}-${Math.random().toString(16).slice(2)}`}
+function roleLabel(role){return ROLES[role]||ROLES.hall}
+function normalizeRole(value){
+ const text=String(value||"").trim().toLowerCase();
+ if(["kitchen","キッチン","厨房","調理"].includes(text))return"kitchen";
+ if(["hall","ホール","フロア","接客"].includes(text))return"hall";
+ return"hall";
+}
+function defaultRoleForName(name){
+ const text=String(name||"");
+ if(text.includes("高田"))return"kitchen";
+ if(text.includes("柴谷"))return"hall";
+ return"hall";
+}
 function showError(x){let e=el("error");e.textContent=x;e.style.display=x?"block":"none"}
 function showStatus(x){let e=el("data-status");e.textContent=x;e.style.display=x?"block":"none"}
 function showMasterStatus(x){el("staff-master-status").textContent=x}
@@ -69,7 +83,7 @@ function renderStaffMaster(){
  staffMaster.forEach((staff,index)=>{
    const option=document.createElement("option");
    option.value=String(index);
-   option.textContent=`${staff.name}（${staff.days.length?staff.days.map(d=>DAYS[d]).join("・"):"曜日未設定"}）`;
+   option.textContent=`${staff.name}（${roleLabel(staff.role)} / ${staff.days.length?staff.days.map(d=>DAYS[d]).join("・"):"曜日未設定"}）`;
    select.appendChild(option);
  });
  showMasterStatus(staffMaster.length?`${staffMaster.length}名のスタッフマスターを読み込みました。`:"スタッフマスターが空です。");
@@ -78,6 +92,7 @@ function applyStaffMaster(index){
  const staff=staffMaster[Number(index)];
  if(!staff)return;
  el("name").value=staff.name;
+ el("role").value=staff.role;
  document.querySelectorAll("#days input").forEach(input=>{input.checked=staff.days.includes(Number(input.value))});
  el("from").value=staff.from;
  el("to").value=staff.to;
@@ -93,7 +108,8 @@ async function loadStaffMaster(){
      const days=parseMasterDays(cell(row,headers,["days","曜日","出勤曜日","出勤可能曜日","available_days"]));
      const from=parseMasterTime(cell(row,headers,["from","開始","開始時刻","出勤開始","start"]),1050);
      const to=parseMasterTime(cell(row,headers,["to","終了","終了時刻","出勤終了","end"]),1440);
-     return {name,days,from,to,color:COLORS[index%COLORS.length]};
+     const role=normalizeRole(cell(row,headers,["role","役割","担当","ポジション","position"]));
+     return {name,days,from,to,role,color:COLORS[index%COLORS.length]};
    }).filter(staff=>staff.name);
    renderStaffMaster();
  }catch(error){
@@ -117,7 +133,7 @@ function resetResultView(){
 }
 function loadSaved(){
  let x=localStorage.getItem(STORAGE);
- if(x){try{people=JSON.parse(x)}catch(e){people=[]}}
+ if(x){try{people=JSON.parse(x).map(normalizePerson);save()}catch(e){people=[]}}
  if(!people.length)loadDemo(false); else renderPeople();
 }
 function normalizePerson(person,index){
@@ -127,7 +143,8 @@ function normalizePerson(person,index){
  if(!String(person.name||"").trim())throw new Error("名前が空のスタッフが含まれています。");
  if(!days.length)throw new Error(`${person.name} の曜日設定がありません。`);
  if(!Number.isFinite(from)||!Number.isFinite(to)||from<START||to>1440||to<=from)throw new Error(`${person.name} の時間設定が正しくありません。`);
- const normalized={id:String(person.id||newId()),name:String(person.name).trim(),days:[...new Set(days)],from,to,color:person.color||COLORS[index%COLORS.length],priority:Boolean(person.priority)};
+ const name=String(person.name).trim();
+ const normalized={id:String(person.id||newId()),name,days:[...new Set(days)],from,to,role:normalizeRole(person.role||defaultRoleForName(name)),color:person.color||COLORS[index%COLORS.length],priority:Boolean(person.priority)};
  if(person.custom&&typeof person.custom==="object"){
    normalized.custom={};
    Object.keys(person.custom).forEach((day)=>{
@@ -263,22 +280,29 @@ function importJsonFile(file){
 }
 function addPerson(){
  showError("");showStatus("");let name=el("name").value.trim(),ds=[...document.querySelectorAll("#days input:checked")].map(x=>+x.value);
- let from=+el("from").value,to=+el("to").value;
+ let from=+el("from").value,to=+el("to").value,role=normalizeRole(el("role").value);
  if(!name)return showError("名前を入力してください。");if(!ds.length)return showError("曜日を1つ以上選択してください。");
  if(to-from<180)return showError("1勤務は最低2時間30分必要です。");
- people.push({id:newId(),name,days:ds,from,to,color:COLORS[people.length%COLORS.length],priority:false});
- save();renderPeople();clearJsonPreview();el("name").value="";el("staff-master").value="";
+ people.push({id:newId(),name,days:ds,from,to,role,color:COLORS[people.length%COLORS.length],priority:false});
+ save();renderPeople();clearJsonPreview();el("name").value="";el("role").value="hall";el("staff-master").value="";
 }
 function renderPeople(){
  let e=el("people");
- e.innerHTML=people.length?people.map(p=>`<div class="person"><span class="dot" style="background:${p.color}"></span><div class="pinfo"><div class="pname">${esc(p.name)} ${p.priority?"｜固定優先":""}</div><div class="psub">${p.days.map(d=>DAYS[d]).join("・")} / ${fmt(p.from)}–${fmt(p.to)}</div></div>${p.priority?"":`<button class="remove" type="button" data-remove-id="${p.id}" aria-label="${esc(p.name)}を削除">×</button>`}</div>`).join(""):'<div class="empty">スタッフ未登録</div>';
+ e.innerHTML=people.length?people.map(p=>`<div class="person"><span class="dot" style="background:${p.color}"></span><div class="pinfo"><div class="pname">${esc(p.name)} ${p.priority?"｜固定優先":""}</div><div class="psub"><span class="role-label">${roleLabel(p.role)}</span> / ${p.days.map(d=>DAYS[d]).join("・")} / ${fmt(p.from)}–${fmt(p.to)}</div></div><div class="person-tools">${p.priority?`<span class="role-badge">${roleLabel(p.role)}</span>`:`<select class="role-select" data-role-id="${p.id}" aria-label="${esc(p.name)}の役割"><option value="hall" ${p.role==="hall"?"selected":""}>ホール</option><option value="kitchen" ${p.role==="kitchen"?"selected":""}>キッチン</option></select><button class="remove" type="button" data-remove-id="${p.id}" aria-label="${esc(p.name)}を削除">×</button>`}</div></div>`).join(""):'<div class="empty">スタッフ未登録</div>';
 }
 function removePerson(id){people=people.filter(p=>p.id!==id);save();renderPeople();clearJsonPreview()}
+function updatePersonRole(id,role){
+ const person=people.find(p=>p.id===id&&!p.priority);
+ if(!person)return;
+ person.role=normalizeRole(role);
+ save();renderPeople();clearJsonPreview();
+ if(result)generate();
+}
 function clearAll(){people=[];save();renderPeople();resetResultView();clearJsonPreview()}
 function loadDemo(saveIt=true){
  people=[
- {id:"t",name:"高田（店長）",days:[0,1,2,3,4,5,6],from:1140,to:1440,color:"#c9a46c",priority:true,custom:{0:[1140,1440],1:[1140,1440],2:[1380,1440],3:[1380,1440],4:[1380,1440],5:[1380,1440],6:[1140,1440]}},
- {id:"s",name:"柴谷（専務）",days:[2,3,4,5],from:1140,to:1380,color:"#7ba7d9",priority:true}
+ {id:"t",name:"高田（店長）",days:[0,1,2,3,4,5,6],from:1140,to:1440,role:"kitchen",color:"#c9a46c",priority:true,custom:{0:[1140,1440],1:[1140,1440],2:[1380,1440],3:[1380,1440],4:[1380,1440],5:[1380,1440],6:[1140,1440]}},
+ {id:"s",name:"柴谷（専務）",days:[2,3,4,5],from:1140,to:1380,role:"hall",color:"#7ba7d9",priority:true}
  ];
  if(saveIt)save();renderPeople();clearJsonPreview();generate();
 }
@@ -286,6 +310,23 @@ function avail(p,d,s){
  let a=START+s*SLOT,b=a+SLOT;
  if(p.custom&&p.custom[d]){let [x,y]=p.custom[d];return a>=x&&b<=y}
  return p.days.includes(d)&&a>=p.from&&b<=p.to;
+}
+function roleCounts(work,d,s){
+ const counts={hall:0,kitchen:0,total:0};
+ people.forEach((p,i)=>{
+   if(!work[i][d][s])return;
+   counts[normalizeRole(p.role)]++;
+   counts.total++;
+ });
+ return counts;
+}
+function coverageInfo(work,d,s){
+ const counts=roleCounts(work,d,s);
+ const missing=[];
+ if(counts.hall<1)missing.push("ホール");
+ if(counts.kitchen<1)missing.push("キッチン");
+ if(missing.length)return {className:"missing",text:missing.length===2?"H/K不足":`${missing[0]}不足`,counts};
+ return {className:counts.total===2?"ok":"triple",text:counts.total===2?"2名":`${counts.total}名`,counts};
 }
 function generate(){
  showError("");showStatus("");clearJsonPreview();
@@ -344,8 +385,9 @@ function generate(){
    while(true){
      let missing=0;
      for(let s=0;s<NS;s++){
-       const c=people.reduce((n,p,i)=>n+(work[i][d][s]?1:0),0);
-       if(c<2)missing++;
+       const c=roleCounts(work,d,s);
+       if(c.hall<1)missing++;
+       if(c.kitchen<1)missing++;
      }
      if(missing===0)break;
 
@@ -358,17 +400,18 @@ function generate(){
        if(tripleAfterBlock(x.i,d,x.bl)>2)continue;
 
        let gain=0, overlap=0, businessGain=0;
+       const role=normalizeRole(people[x.i].role);
        for(let s=x.bl.a;s<x.bl.b;s++){
-         const c=people.reduce((n,p,i)=>n+(work[i][d][s]?1:0),0);
-         if(c<2){
+         const c=roleCounts(work,d,s);
+         if(c[role]<1){
            gain++;
            const tm=START+s*SLOT;
            if(tm>=1080&&tm<1380)businessGain++;
-         }else overlap++;
+         }else if(c.total>=2)overlap++;
        }
        if(gain===0)continue;
 
-       // 2名未満の枠を埋める量を絶対最優先。
+       // 役割不足の枠を埋める量を絶対最優先。
        // 同点なら営業中を優先、3人化を避ける、週20hに余裕がある人を優先。
        let score=gain*100000 + businessGain*1000 - overlap*10000;
        score+=(20-week[x.i])*10;
@@ -447,45 +490,43 @@ function render(){
   mobile+=`<div class="mobile-day"><div class="mobile-day-title">${DAYS[d]}曜日</div><div class="mobile-day-body">${mobileAxis()}<div class="mobile-staff">`;
   let dayShifts=0;
   people.forEach((p,i)=>{
-   desktop+=`<div class="timeline"><div class="namecell"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</div>`;
+   desktop+=`<div class="timeline"><div class="namecell"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}<span class="role-mini">${roleLabel(p.role)}</span></div>`;
    for(let s=0;s<NS;s++){
     let on=work[i][d][s],open=(START+s*SLOT>=1080&&START+s*SLOT<1380);
     desktop+=`<div class="slot ${open?"open-slot":""}">${on?`<div class="work ${s===0||!work[i][d][s-1]?"start":""} ${s===NS-1||!work[i][d][s+1]?"end":""}" style="background:${p.color}" title="${esc(p.name)} ${fmt(START+s*SLOT)}–${fmt(START+(s+1)*SLOT)}"></div>`:""}</div>`;
    }
    desktop+="</div>";
    const range=shiftRange(work[i][d]);
-   if(range){dayShifts++;mobile+=`<div class="mobile-shift"><div class="mobile-shift-head"><div class="mobile-shift-name"><span class="dot" style="background:${p.color}"></span><span>${esc(p.name)}</span></div><div class="mobile-shift-time">${range}</div></div>${mobileWorkBar(work[i][d],p.color)}</div>`;}
+   if(range){dayShifts++;mobile+=`<div class="mobile-shift"><div class="mobile-shift-head"><div class="mobile-shift-name"><span class="dot" style="background:${p.color}"></span><span>${esc(p.name)} / ${roleLabel(p.role)}</span></div><div class="mobile-shift-time">${range}</div></div>${mobileWorkBar(work[i][d],p.color)}</div>`;}
   });
   if(!dayShifts)mobile+=`<div class="mobile-none">勤務なし</div>`;
   mobile+=`</div><div class="mobile-cover-grid">`;
   desktop+=`<div class="timeline"><div class="namecell" style="color:#888">配置状況</div>`;
   for(let s=0;s<NS;s++){
-   const c=people.reduce((n,p,i)=>n+(work[i][d][s]?1:0),0);
-   const cl=c<2?"missing":c===2?"ok":"triple";
-   const tx=c<2?"不足":c===2?"2名":c+"名";
-   desktop+=`<div class="cover ${cl}">${tx}</div>`;
-   mobile+=`<div class="mobile-cover ${cl}"><span class="mobile-cover-time">${fmt(START+s*SLOT)}</span><b>${tx}</b></div>`;
+   const info=coverageInfo(work,d,s);
+   desktop+=`<div class="cover ${info.className}">${info.text}</div>`;
+   mobile+=`<div class="mobile-cover ${info.className}"><span class="mobile-cover-time">${fmt(START+s*SLOT)}</span><b>${info.text}</b></div>`;
   }
   desktop+="</div></div>";
   mobile+="</div></div></div>";
  }
  el("schedule").innerHTML=`<div class="desktop-schedule">${desktop}</div><div class="mobile-schedule">${mobile}</div>`;
- el("legend").innerHTML=people.map(p=>`<div class="legend-item"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</div>`).join("");
+ el("legend").innerHTML=people.map(p=>`<div class="legend-item"><span class="dot" style="background:${p.color}"></span>${esc(p.name)} / ${roleLabel(p.role)}</div>`).join("");
 
  let rows=people.map((p,i)=>{
    let h=week[i],days=daily[i].filter(x=>x>0).length;
    let status=h>20?"20時間超過":(violations.some(v=>v.startsWith(p.name))?"条件違反":"OK");
-   return `<tr><td><span class="dot" style="background:${p.color};display:inline-block;margin-right:6px"></span>${esc(p.name)}</td><td><b>${h.toFixed(1)}h</b></td><td>${days}日</td><td><span class="badge ${status!=="OK"?"warn":""}">${status}</span></td></tr>`;
+   return `<tr><td><span class="dot" style="background:${p.color};display:inline-block;margin-right:6px"></span>${esc(p.name)}</td><td>${roleLabel(p.role)}</td><td><b>${h.toFixed(1)}h</b></td><td>${days}日</td><td><span class="badge ${status!=="OK"?"warn":""}">${status}</span></td></tr>`;
  }).join("");
- el("summary").innerHTML=`<table><thead><tr><th>スタッフ</th><th>週合計</th><th>勤務日数</th><th>状態</th></tr></thead><tbody>${rows}</tbody></table>`;
+ el("summary").innerHTML=`<table><thead><tr><th>スタッフ</th><th>役割</th><th>週合計</th><th>勤務日数</th><th>状態</th></tr></thead><tbody>${rows}</tbody></table>`;
 
  let missing=[];
  for(let d=0;d<7;d++)for(let s=0;s<NS;s++){
-   let c=people.reduce((n,p,i)=>n+(work[i][d][s]?1:0),0);
-   if(c<2)missing.push(`${DAYS[d]} ${fmt(START+s*SLOT)}`);
+   const info=coverageInfo(work,d,s);
+   if(info.className==="missing")missing.push(`${DAYS[d]} ${fmt(START+s*SLOT)} ${info.text}`);
  }
  let msgs=[];
- if(missing.length)msgs.push("2名未満："+missing.join("、"));
+ if(missing.length)msgs.push("役割不足："+missing.join("、"));
  if(violations.length)msgs.push("ルール違反："+violations.join(" / "));
  const over=people.filter((p,i)=>week[i]>20).map(p=>p.name);
  if(over.length)msgs.push("20時間超："+over.join("、"));
@@ -503,6 +544,10 @@ function bindEvents(){
  el("copy-json").addEventListener("click",copyJson);
  el("download-json").addEventListener("click",downloadLatestJson);
  el("staff-master").addEventListener("change",(event)=>applyStaffMaster(event.target.value));
+ el("people").addEventListener("change",(event)=>{
+   const select=event.target.closest("[data-role-id]");
+   if(select)updatePersonRole(select.dataset.roleId,select.value);
+ });
  el("people").addEventListener("click",(event)=>{
    const button=event.target.closest("[data-remove-id]");
    if(button)removePerson(button.dataset.removeId);

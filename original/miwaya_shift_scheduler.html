@@ -16,6 +16,8 @@
 <select id="staff-master"><option value="">スタッフマスターを読み込み中...</option></select>
 <div id="staff-master-status" class="master-status"></div>
 <label>名前</label><input id="name" type="text" placeholder="例：Sajib">
+<label style="margin-top:11px">役割</label>
+<select id="role"><option value="hall">ホール</option><option value="kitchen">キッチン</option></select>
 <label style="margin-top:11px">出勤可能な曜日</label>
 <div class="days" id="days">
 <label class="daycheck"><input type="checkbox" value="0"><span>月</span></label><label class="daycheck"><input type="checkbox" value="1"><span>火</span></label>
@@ -39,13 +41,13 @@
 </div>
 <div class="notice">※スタッフ登録データと編成済みシフトをJSONファイルとして保存・共有できます。</div>
 </div>
-<div class="notice">※選択できる時間は17:30〜24:00の30分単位のみ。<br>※自動編成では「高田（店長）・柴谷（専務）」の設定を固定し、その空きを優先して他スタッフを配置します。<br>※常時2名を最優先。3名は1日合計1時間まで。1勤務は最低2時間30分。週20時間超は警告。</div>
+<div class="notice">※選択できる時間は17:30〜24:00の30分単位のみ。<br>※自動編成では「高田（店長）＝キッチン」「柴谷（専務）＝ホール」の設定を固定し、その空きを優先して他スタッフを配置します。<br>※ホール1名＋キッチン1名を最優先。3名は1日合計1時間まで。1勤務は最低2時間30分。週20時間超は警告。</div>
 </div>
 </section>
 <section>
 <div class="panel">
 <div class="constraints">
-<div class="constraint"><b>18:00–23:00</b><span>営業中を強調表示</span></div><div class="constraint"><b>2名</b><span>常時2名を最優先</span></div><div class="constraint"><b>＋1h</b><span>3名体制の許容上限</span></div><div class="constraint"><b>20h</b><span>週労働時間の目標上限</span></div>
+<div class="constraint"><b>18:00–23:00</b><span>営業中を強調表示</span></div><div class="constraint"><b>H＋K</b><span>ホール1名＋キッチン1名</span></div><div class="constraint"><b>＋1h</b><span>3名体制の許容上限</span></div><div class="constraint"><b>20h</b><span>週労働時間の目標上限</span></div>
 </div>
 <div class="open-label">▰ 金色の帯＝営業時間（18:00〜23:00）　｜　17:30〜18:00・23:00〜24:00は営業外</div>
 <div class="schedule-wrap"><div id="schedule" class="schedule"><div class="empty">スタッフを登録して「シフトを自動編成」を押してください。</div></div></div>
