@@ -69,7 +69,7 @@ function renderStaffMaster(){
  staffMaster.forEach((staff,index)=>{
    const option=document.createElement("option");
    option.value=String(index);
-   option.textContent=`${staff.name}（${staff.days.map(d=>DAYS[d]).join("・")}）`;
+   option.textContent=`${staff.name}（${staff.days.length?staff.days.map(d=>DAYS[d]).join("・"):"曜日未設定"}）`;
    select.appendChild(option);
  });
  showMasterStatus(staffMaster.length?`${staffMaster.length}名のスタッフマスターを読み込みました。`:"スタッフマスターが空です。");
@@ -94,7 +94,7 @@ async function loadStaffMaster(){
      const from=parseMasterTime(cell(row,headers,["from","開始","開始時刻","出勤開始","start"]),1050);
      const to=parseMasterTime(cell(row,headers,["to","終了","終了時刻","出勤終了","end"]),1440);
      return {name,days,from,to,color:COLORS[index%COLORS.length]};
-   }).filter(staff=>staff.name&&staff.days.length);
+   }).filter(staff=>staff.name);
    renderStaffMaster();
  }catch(error){
    staffMaster=[];
