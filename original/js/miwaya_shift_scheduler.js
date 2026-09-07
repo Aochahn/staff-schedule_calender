@@ -3,18 +3,104 @@ const COLORS=["#c9a46c","#7ba7d9","#9bc27d","#c77b9b","#8f83c9","#d18b63","#68aa
 let people=[], result=null;
 const STORAGE="miwaya_shift_people_v2";
 const DATA_SCHEMA_VERSION=1;
+const STAFF_MASTER_CSV="data/staff_master.csv";
 const el=(id)=>document.getElementById(id);
 let latestJsonExport=null;
+let staffMaster=[];
 
 function fmt(m){if(m===1440)return"24:00";return String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0")}
 function esc(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function newId(){return crypto.randomUUID?crypto.randomUUID():`person-${Date.now()}-${Math.random().toString(16).slice(2)}`}
 function showError(x){let e=el("error");e.textContent=x;e.style.display=x?"block":"none"}
 function showStatus(x){let e=el("data-status");e.textContent=x;e.style.display=x?"block":"none"}
+function showMasterStatus(x){el("staff-master-status").textContent=x}
 function clearJsonPreview(){
  latestJsonExport=null;
  el("json-preview").hidden=true;
  el("json-preview-text").value="";
+}
+function parseCsv(text){
+ const rows=[],lines=text.replace(/^\uFEFF/,"").split(/\r?\n/).filter(line=>line.trim());
+ lines.forEach((line)=>{
+   const row=[];
+   let value="",quoted=false;
+   for(let i=0;i<line.length;i++){
+     const char=line[i],next=line[i+1];
+     if(char==='"'&&quoted&&next==='"'){value+='"';i++}
+     else if(char==='"'){quoted=!quoted}
+     else if(char===","&&!quoted){row.push(value.trim());value=""}
+     else value+=char;
+   }
+   row.push(value.trim());
+   rows.push(row);
+ });
+ return rows;
+}
+function cell(row,headers,names){
+ for(const name of names){
+   const index=headers.indexOf(name);
+   if(index>=0&&row[index]!==undefined)return row[index];
+ }
+ return "";
+}
+function parseMasterDays(value){
+ const map={月:0,火:1,水:2,木:3,金:4,土:5,日:6};
+ const days=[];
+ String(value||"").split(/[、,・\s/／|]+/).forEach((part)=>{
+   if(part==="")return;
+   if(map[part]!==undefined)days.push(map[part]);
+   [...part].forEach((char)=>{if(map[char]!==undefined)days.push(map[char])});
+ });
+ return [...new Set(days)];
+}
+function parseMasterTime(value,fallback){
+ const text=String(value||"").trim();
+ if(!text)return fallback;
+ const normalized=text.replace("：",":");
+ const match=normalized.match(/^(\d{1,2}):?(\d{2})?$/);
+ if(!match)return fallback;
+ const hour=Number(match[1]),minute=Number(match[2]||0);
+ const mins=hour*60+minute;
+ return Number.isFinite(mins)?mins:fallback;
+}
+function renderStaffMaster(){
+ const select=el("staff-master");
+ select.innerHTML='<option value="">スタッフを選択してください</option>';
+ staffMaster.forEach((staff,index)=>{
+   const option=document.createElement("option");
+   option.value=String(index);
+   option.textContent=`${staff.name}（${staff.days.map(d=>DAYS[d]).join("・")}）`;
+   select.appendChild(option);
+ });
+ showMasterStatus(staffMaster.length?`${staffMaster.length}名のスタッフマスターを読み込みました。`:"スタッフマスターが空です。");
+}
+function applyStaffMaster(index){
+ const staff=staffMaster[Number(index)];
+ if(!staff)return;
+ el("name").value=staff.name;
+ document.querySelectorAll("#days input").forEach(input=>{input.checked=staff.days.includes(Number(input.value))});
+ el("from").value=staff.from;
+ el("to").value=staff.to;
+}
+async function loadStaffMaster(){
+ try{
+   const response=await fetch(`${STAFF_MASTER_CSV}?v=${Date.now()}`,{cache:"no-store"});
+   if(!response.ok)throw new Error("CSVを取得できませんでした。");
+   const rows=parseCsv(await response.text());
+   const headers=rows.shift().map(header=>header.trim());
+   staffMaster=rows.map((row,index)=>{
+     const name=cell(row,headers,["name","名前","スタッフ名","staff","staff_name"]);
+     const days=parseMasterDays(cell(row,headers,["days","曜日","出勤曜日","出勤可能曜日","available_days"]));
+     const from=parseMasterTime(cell(row,headers,["from","開始","開始時刻","出勤開始","start"]),1050);
+     const to=parseMasterTime(cell(row,headers,["to","終了","終了時刻","出勤終了","end"]),1440);
+     return {name,days,from,to,color:COLORS[index%COLORS.length]};
+   }).filter(staff=>staff.name&&staff.days.length);
+   renderStaffMaster();
+ }catch(error){
+   staffMaster=[];
+   el("staff-master").innerHTML='<option value="">手入力で登録してください</option>';
+   showMasterStatus("スタッフマスターを読み込めませんでした。手入力で登録できます。");
+ }
 }
 function options(){
  let f=el("from"),t=el("to");
@@ -181,7 +267,7 @@ function addPerson(){
  if(!name)return showError("名前を入力してください。");if(!ds.length)return showError("曜日を1つ以上選択してください。");
  if(to-from<180)return showError("1勤務は最低2時間30分必要です。");
  people.push({id:newId(),name,days:ds,from,to,color:COLORS[people.length%COLORS.length],priority:false});
- save();renderPeople();clearJsonPreview();el("name").value="";
+ save();renderPeople();clearJsonPreview();el("name").value="";el("staff-master").value="";
 }
 function renderPeople(){
  let e=el("people");
@@ -416,6 +502,7 @@ function bindEvents(){
  el("share-json").addEventListener("click",shareJson);
  el("copy-json").addEventListener("click",copyJson);
  el("download-json").addEventListener("click",downloadLatestJson);
+ el("staff-master").addEventListener("change",(event)=>applyStaffMaster(event.target.value));
  el("people").addEventListener("click",(event)=>{
    const button=event.target.closest("[data-remove-id]");
    if(button)removePerson(button.dataset.removeId);
@@ -424,6 +511,7 @@ function bindEvents(){
 function init(){
  bindEvents();
  options();
+ loadStaffMaster();
  loadSaved();
 }
 
